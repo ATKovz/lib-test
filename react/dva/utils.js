@@ -1,0 +1,1 @@
+export const hasString = (target, str) => !(target.indexOf(str) === -1)
