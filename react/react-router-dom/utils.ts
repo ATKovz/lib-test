@@ -1,0 +1,1 @@
+export const getPathName = (): string => window.location.hash.slice(1)
