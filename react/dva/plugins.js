@@ -3,13 +3,17 @@ export const HOOKS_EXTRA_REDUCERS = 'extraReducers'
 export const HOOKS_ONREDUCER = 'onReducer'
 export const HOOKS_ONACTION = 'onAction'
 export const HOOKS_ONSTATE_CHANGE = 'onStateChange'
+export const HOOKS_EXTRA_ENHANCERS = 'extraEnhancers'
+export const HOOKS_ONERROR = 'onError'
 
 const hooksMap = [
   HOOKS_ONEFFECT,
   HOOKS_EXTRA_REDUCERS,
   HOOKS_ONREDUCER,
   HOOKS_ONACTION,
-  HOOKS_ONSTATE_CHANGE
+  HOOKS_ONSTATE_CHANGE,
+  HOOKS_EXTRA_ENHANCERS,
+  HOOKS_ONERROR
 ]
 
 /**
@@ -47,7 +51,6 @@ export class Plugin {
   constructor () {
     // this.hooks = { onEffects: [], extraReducer: [] }
     this.hooks = hooksMap.reduce((memo, key) => {
-      console.log(key);
       return ((memo[key] = []) && memo)
     }, {})
   }
@@ -56,7 +59,12 @@ export class Plugin {
   
   use (plugins) {
     Object.keys(plugins).forEach(key => {
-      this.hooks[key]?.push(plugins[key])
+      if (key === HOOKS_EXTRA_ENHANCERS) {
+        // 因为这个参数就是 Array 形式的，所以不用 push
+        this.hooks[key] = plugins[key]
+      } else {
+        this.hooks[key].push(plugins[key])
+      }
     })
   }
 

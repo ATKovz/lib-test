@@ -15,18 +15,6 @@ const createLoading = () => {
       switch (type) {
         case SHOW:
           {
-            console.log({
-              ...state,
-              global: true,
-              models: {
-                ...state.models,
-                [namespace]: true
-              },
-              effects: {
-                ...state.effects,
-                [actionType]: true
-              }
-            });
             return {
               ...state,
               global: true,
@@ -41,7 +29,6 @@ const createLoading = () => {
             }
           }
         case HIDE: {
-          console.log(state, '=====');
           const effects = {
             ...state.effects,
             [actionType]: false
@@ -103,9 +90,3 @@ const createLoading = () => {
 }
 
 export default createLoading
-
-let b = 1
-export const test = () => {
-  console.log(b, '=========== test =========');
-  b +=1
-}

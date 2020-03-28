@@ -1,12 +1,12 @@
 import React from 'react'
 import ReactDOM from 'react-dom'
-import { createStore, combineReducers, applyMiddleware } from 'redux'
+import { createStore, combineReducers, applyMiddleware, compose } from 'redux'
 import { Provider, connect } from 'react-redux'
 import { createHashHistory, createBrowserHistory } from 'history'
 import createSagaMiddleWare from 'redux-saga'
 import * as RouterRedux from 'connected-react-router'
 import * as sagaEffects from 'redux-saga/effects'
-import { Plugin, HOOKS_EXTRA_REDUCERS, HOOKS_ONEFFECT, HOOKS_ONACTION, HOOKS_ONSTATE_CHANGE, HOOKS_ONREDUCER } from './plugins'
+import { Plugin, HOOKS_EXTRA_REDUCERS, HOOKS_ONEFFECT, HOOKS_ONACTION, HOOKS_ONSTATE_CHANGE, HOOKS_ONREDUCER, HOOKS_EXTRA_ENHANCERS, HOOKS_ONERROR } from './plugins'
 import { hasString } from './utils'
 
 export { RouterRedux }
@@ -36,7 +36,10 @@ const prefixNamespace = (model, fieldName) => {
   const target = model[fieldName] || {}
   const nextTarget = Object.keys(target).reduce((prev, key) => {
     const PREFIX_SEP = '/'
-    prev[`${namespace}${PREFIX_SEP}${key}`] = target[key]
+    const nextKey = hasString(key, '/')
+                      ? key
+                      : `${namespace}${PREFIX_SEP}${key}`
+    prev[nextKey] = target[key]
     return prev
   }, {})
   model[fieldName] = nextTarget
@@ -62,16 +65,16 @@ const prefixKey = (key, model) => {
  * 加载 subscription
  * @param {Object} app 
  */
-const runSubscriptions = (app) => {
+const runSubscriptions = (app, onError) => {
   app._models.forEach(model => {
     const { subscriptions = {} } = model
-    runSubscription(subscriptions, app)
+    runSubscription(subscriptions, app, onError)
     // runSubscription(subscriptions, app._store.dispatch, app._history)
   })
 }
-const runSubscription = (subscriptions, app) => {
+const runSubscription = (subscriptions, app, onError) => {
   Object.keys(subscriptions).forEach(key => {
-    subscriptions[key]({ history: app._history, dispatch: app._store.dispatch })
+    subscriptions[key]({ history: app._history, dispatch: app._store.dispatch }, onError)
   })
 }
 
@@ -81,7 +84,7 @@ const runSubscription = (subscriptions, app) => {
  */
 const generatePut = model => action => sagaEffects.put({ ...action, type: prefixKey(action.type, model) })
 
-const getWatcher = (key, effect, model, onEffect) => {
+const getWatcher = (key, effect, model, onEffect, onError) => {
   const secureKey = prefixKey(key, model)
   const put = generatePut(model)
   return function * () {
@@ -92,7 +95,11 @@ const getWatcher = (key, effect, model, onEffect) => {
       })
     }
     yield sagaEffects.takeEvery(secureKey, function * (...args) {
-      yield effect({ ...args }, { ...sagaEffects, put })
+      try {
+        yield effect({ ...args }, { ...sagaEffects, put })
+      } catch (err) {
+        onError(err)
+      }
     })
   }
 }
@@ -114,6 +121,13 @@ const dva = function (opt = {}) {
   const sagaMiddleWare = createSagaMiddleWare()
   // 插件实例初始化
   const plugins = new Plugin([])
+  // 处理 onError 
+  const onError = (error) => {
+    const ErrorCb = plugins.get(HOOKS_ONERROR)
+    ErrorCb.forEach(cb => {
+      cb(error)
+    })
+  }
   app.use = plugins.use.bind(plugins)
   app.injectModel = injectModel.bind(app)
   /**
@@ -131,12 +145,13 @@ const dva = function (opt = {}) {
    * 监听 effects （saga）
    * @param {Object} model 
    * @param {Object} onEffect plugin.get('onEffect')
+   * @param {Object} onError plugin.get('onError')
    */
-  function getSaga (model, onEffect) {
+  function getSaga (model, onEffect, onError) {
     return function * () {
       const { effects } = model
       for (const key in effects) {
-        const watcher = getWatcher(key, effects[key], model, onEffect)
+        const watcher = getWatcher(key, effects[key], model, onEffect, onError)
         // 开一个新的线程执行 saga （saga 主要是调用 takeEvery 来监听 put/dispatch 里的 type）
         yield sagaEffects.fork(watcher)
       }
@@ -154,7 +169,7 @@ const dva = function (opt = {}) {
     // prefix
     m = model(m)
     if (m.effects) {
-      const saga = getSaga(m, plugins.get(HOOKS_ONEFFECT))
+      const saga = getSaga(m, plugins.get(HOOKS_ONEFFECT), onError)
       sagaMiddleWare.run(saga)
     }
     if (m.reducers) {
@@ -162,7 +177,7 @@ const dva = function (opt = {}) {
       app._store.replaceReducer(getReducer())
     }
     if (m.subscription) {
-      runSubscription(m.subscriptions, app)
+      runSubscription(m.subscriptions, app, onError)
     }
   }
   function router (render) {
@@ -173,16 +188,22 @@ const dva = function (opt = {}) {
       initialReducer[model.namespace] = createReducer(model.reducers, model.state)
     }, {})
     const rootReducer = getReducer()
-    // 处理 onAction hooks 的中间件
+    // 处理 extraEnhancers 和 onAction hooks 的中间件
+    const extraEnhancers = plugins.get(HOOKS_EXTRA_ENHANCERS)
     const extraMiddlewares = plugins.get(HOOKS_ONACTION)
-    const store = applyMiddleware(
-      RouterRedux.routerMiddleware(history),
-      sagaMiddleWare,
-      ...extraMiddlewares,
-      )(createStore)(rootReducer, opt.initialState)
+    // applyMiddlewares 的返回值就是一个 enhancers
+    const enhancer = [
+      ...extraEnhancers,
+      applyMiddleware(
+        RouterRedux.routerMiddleware(history),
+        sagaMiddleWare,
+        ...extraMiddlewares,
+      )
+    ]
+    const store = createStore(rootReducer, opt.initialState, compose(...enhancer))
     app._store = store
     // 处理 subcriprion
-    runSubscriptions(app)
+    runSubscriptions(app, onError)
     // 监听 effects
     const sagas = getSagas(app)
     sagas.forEach(sagaMiddleWare.run)
@@ -198,7 +219,8 @@ const dva = function (opt = {}) {
       <Provider store={app._store}>
         {app._router({ history, app })}
       </Provider>,
-    document.querySelector(container))
+      document.querySelector(container)
+    )
   }
   const getReducer = () => {
     const extraReducers = plugins.get(HOOKS_EXTRA_REDUCERS)
