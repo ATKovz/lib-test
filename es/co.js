@@ -13,7 +13,7 @@ const co = function (g) {
         Promise.resolve(value).then(data => {
           next(data)
         }).catch(err => {
-          it.throw(err)
+          reject(err)
         })
       }
     }

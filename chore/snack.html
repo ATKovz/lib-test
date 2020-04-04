@@ -1,0 +1,144 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<body>
+  <canvas width="500" height="500" style="background-color: blue;" id='c'></canvas>
+</body>
+<script>
+  /** @type {HTMLCanvasElement} */ 
+  const c = document.querySelector('#c')
+  const canvas = c.getContext('2d')
+  // 用数组储存🐍的身体 x/y
+  const snackBody = [
+    [3, 6],
+    [4, 6],
+    [5, 6]
+  ]
+  // 单个点占的像素个数
+  const spread = 25
+  // 格子数
+  const size = 40
+  // 速度
+  const speed = 100
+  // 地图大小
+  const map = spread * size
+  c.width = map
+  c.height = map
+  // x, y 0: 下/右， 1: '上/左'
+  let direction = [1, 0]
+  let food = generateFoods(size)
+  let animate = null
+  window.onload = () => {
+    start(speed)
+  }
+  function start (timer) {
+    if (animate) {
+      clearInterval(animate)
+    }
+    animate = setInterval(() => {
+      render(snackBody)
+    }, timer)
+  }
+  function render (body) {
+      const length = body.length
+      for (let i = 0; i < length - 1; i++) {
+        body[i][0] = body[i + 1][0]
+        body[i][1] = body[i + 1][1]
+      }
+      // 最后一截手动操作，方便调整方向
+      body[length - 1][0] += direction[0]
+      body[length - 1][1] += direction[1]
+      canvas.clearRect(0, 0, map, map)
+      
+      for (let i = 0; i < length; i++) {
+        // 绘制蛇身体
+        draw(body[i][0], body[i][1], 'white')
+      }
+      // 游戏结束判定
+      check(body, map) && alert('game over')
+      // 渲染食物
+      draw(food[0], food[1], 'red')
+  }
+
+  // 判断蛇的行动是否合法
+  function check (body, map) {
+    let head = body[body.length - 1]
+    if (head[0] * spread >= map || head[1] * spread >= map || head[0] < 0 || head[1] < 0) {
+      clearInterval(animate)
+      return true
+    }
+    if (head[0] === food[0] && head[1] === food[1]) {
+      // 在第一位插入一截，因为身体计算是通过第一位外的计算的，所以第一位无论是什么都可以，下一帧就会计算替换掉了
+      body.unshift([0, 0])
+      food = generateFoods(size)
+    }
+    for (let i = 0; i < body.length - 1; i++ ) {
+      head = body[body.length - 1]
+      console.log(head, body);
+      if (body[i][0] === head[0] && body[i][1] === head[1]) {
+        clearInterval(animate)
+        return true
+      }
+    }
+  }
+
+  
+  function generateFoods (s) {
+    // -1 防止出界， 这里没有加不能在蛇身体内的判断，后续再加
+    const range = s - 1
+    const foodPosition = [Math.ceil(Math.random(0, 1) * range), Math.ceil(Math.random(0, 1) * range)]
+    console.log(range, foodPosition);
+    return foodPosition
+  }
+
+
+  // 绘制图像 坐标和颜色，
+  function draw (x, y, color) {
+    canvas.fillStyle = color
+    canvas.fillRect(x * spread - 1, y * spread - 1, spread - 1 , spread - 1)
+  }
+
+  const DIRECTION = {
+    RIGHT: 'ArrowRight',
+    LEFT: 'ArrowLeft',
+    UP: 'ArrowUp',
+    DOWN: 'ArrowDown',
+  }
+  
+  window.onkeydown = (e) => {
+    // 防止滚动页面
+    e.preventDefault()
+   switch (e.code) {
+     case DIRECTION.LEFT: {
+      if (direction[0] != 1) {
+         direction = [-1, 0]
+       }
+       break
+     }
+     case DIRECTION.RIGHT: { 
+      if (direction[0] != -1) {
+         direction = [1, 0]
+       }
+       break
+     }
+     case DIRECTION.UP: {
+      if (direction[1] != 1) {
+         direction = [0, -1]
+       }
+       break
+     }
+     case DIRECTION.DOWN: {
+      if (direction[1] != -1) {
+         direction = [0, 1]
+       }
+       break
+     }
+   }
+  }
+</script>
+</html>
